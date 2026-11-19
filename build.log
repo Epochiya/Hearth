@@ -1,0 +1,70 @@
+
+Welcome to Gradle 8.10.2!
+
+Here are the highlights of this release:
+ - Support for Java 23
+ - Faster configuration cache
+ - Better configuration cache reports
+
+For more details see https://docs.gradle.org/8.10.2/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :app:buildKotlinToolingMetadata
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:generateReleaseResValues
+> Task :app:checkReleaseAarMetadata
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseResources
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+> Task :app:mergeReleaseResources
+> Task :app:processReleaseMainManifest
+> Task :app:packageReleaseResources
+> Task :app:parseReleaseLocalResources
+> Task :app:processReleaseManifest
+> Task :app:processReleaseManifestForPackage
+> Task :app:javaPreCompileRelease
+> Task :app:extractProguardFiles
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:processReleaseResources
+> Task :app:mergeReleaseNativeLibs
+
+> Task :app:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so.
+
+> Task :app:extractReleaseNativeSymbolTables
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:desugarReleaseFileDependencies
+> Task :app:mergeReleaseStartupProfile
+> Task :app:compileReleaseKotlin
+> Task :app:mergeExtDexRelease
+
+> Task :app:compileReleaseKotlin
+e: file:///home/runner/work/android-test/android-test/app/src/main/java/com/clockedbit/hearth/reader/Ink.kt:198:87 Argument type mismatch: actual type is 'kotlin.Float', but 'kotlin.Int' was expected.
+e: file:///home/runner/work/android-test/android-test/app/src/main/java/com/clockedbit/hearth/reader/ReaderScreen.kt:917:58 Unresolved reference 'detectTransformGestures'.
+e: file:///home/runner/work/android-test/android-test/app/src/main/java/com/clockedbit/hearth/reader/ReaderScreen.kt:917:84 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///home/runner/work/android-test/android-test/app/src/main/java/com/clockedbit/hearth/reader/ReaderScreen.kt:917:87 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///home/runner/work/android-test/android-test/app/src/main/java/com/clockedbit/hearth/reader/ReaderScreen.kt:917:92 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///home/runner/work/android-test/android-test/app/src/main/java/com/clockedbit/hearth/reader/ReaderScreen.kt:917:98 Cannot infer type for this parameter. Please specify it explicitly.
+
+> Task :app:compileReleaseKotlin FAILED
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1795110528108.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 4m 20s
+25 actionable tasks: 25 executed
