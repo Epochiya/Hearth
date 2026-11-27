@@ -887,6 +887,7 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
             },
             onShare = {
                 val t = "“${h.text.trim()}”\n— ${book0.title}" + if (h.note.isNotBlank()) "\n\n${h.note}" else ""
+                com.clockedbit.hearth.AppLock.skipNextLock = true
                 ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t), "Share quote"))
             }
         )

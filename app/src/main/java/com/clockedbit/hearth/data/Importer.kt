@@ -27,7 +27,7 @@ class ImportException(msg: String) : Exception(msg)
 
 object Importer {
 
-    private val imageExt = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
+    private val imageExt = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif")
 
     suspend fun import(context: Context, uri: Uri): Book = withContext(Dispatchers.IO) {
         val cr = context.contentResolver
@@ -115,6 +115,7 @@ object Importer {
                 if (!out.canonicalPath.startsWith(canon)) continue
                 out.parentFile?.mkdirs()
                 z.getInputStream(e).use { i -> out.outputStream().use { i.copyTo(it) } }
+                if (e.time > 0) out.setLastModified(e.time) // keep the date from the zip, for "Date modified" order
             }
         }
     }
@@ -358,12 +359,29 @@ object Importer {
         ra.size - rb.size
     }
 
+    /** A comic's pages in the chosen order: 0 = smart A–Z (page2 before page10), 1 = date modified (oldest first). */
+    private fun comicPages(dir: File, sort: Int): List<String> {
+        val files = File(dir, "pages").walkTopDown().filter { it.isFile }.toList()
+        val rel = { f: File -> f.relativeTo(dir).path.replace('\\', '/') }
+        val byName = Comparator<File> { a, b -> naturalOrder.compare(rel(a), rel(b)) }
+        val sorted = if (sort == 1) files.sortedWith(compareBy<File> { it.lastModified() }.then(byName)) else files.sortedWith(byName)
+        return sorted.map(rel)
+    }
+
+    /** Re-order an imported comic's pages. Keeps highlights/ink tied to page numbers, so the page you're on stays the same number. */
+    fun resortComic(bookId: String, sort: Int) {
+        val dir = Store.bookDir(bookId)
+        val files = comicPages(dir, sort)
+        if (files.isEmpty()) return
+        Store.saveStructure(bookId, BookStructure(files.map { Chapter(it, "", 1) }, emptyList()))
+        Store.updateBook(bookId) { it.copy(pageSort = sort) }
+    }
+
     private fun importCbz(id: String, dir: File, raw: File, title: String): Book {
         val pagesDir = File(dir, "pages")
         unzip(raw, pagesDir) { n -> imageExt.any { n.lowercase().endsWith(".$it") } && !n.contains("__MACOSX") }
         raw.delete()
-        val files = pagesDir.walkTopDown().filter { it.isFile }.map { it.relativeTo(dir).path.replace('\\', '/') }
-            .sortedWith(naturalOrder).toList()
+        val files = comicPages(dir, 0)
         if (files.isEmpty()) throw ImportException("No images found in this comic.")
         Store.saveStructure(id, BookStructure(files.map { Chapter(it, "", 1) }, emptyList()))
         val cover = if (saveScaledCover(File(dir, files[0]), File(dir, "cover.jpg"))) "cover.jpg" else null

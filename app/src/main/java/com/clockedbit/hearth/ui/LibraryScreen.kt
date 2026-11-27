@@ -87,6 +87,7 @@ fun exportNotes(ctx: Context, book: Book) {
         putExtra(Intent.EXTRA_SUBJECT, "Notes — ${book.title}")
         putExtra(Intent.EXTRA_TEXT, sb.toString())
     }
+    com.clockedbit.hearth.AppLock.skipNextLock = true
     ctx.startActivity(Intent.createChooser(send, "Export notes"))
 }
 
@@ -139,7 +140,7 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
             }
         }
     }
-    val addBooks = { launcher.launch(arrayOf("*/*")) }
+    val addBooks = { com.clockedbit.hearth.AppLock.skipNextLock = true; launcher.launch(arrayOf("*/*")) }
 
     val shown = remember(books, query, filter, sort) {
         var l = books.asSequence()
@@ -286,8 +287,16 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
                     Store.updateBook(b.id) { if (it.finished) it.copy(finished = false) else it.copy(finished = true, progress = 1f) }
                     menuBook = null
                 }
+                if (b.format == BookFormat.CBZ) {
+                    SheetAction(Icons.AutoMirrored.Rounded.Sort,
+                        if (b.pageSort == 1) "Page order: Date modified (tap for A–Z)" else "Page order: A–Z (tap for Date modified)") {
+                        val next = if (b.pageSort == 1) 0 else 1
+                        menuBook = null
+                        scope.launch(kotlinx.coroutines.Dispatchers.IO) { Importer.resortComic(b.id, next) }
+                    }
+                }
                 SheetAction(Icons.Rounded.Edit, "Edit title & author") { editBook = b; menuBook = null }
-                SheetAction(Icons.Rounded.Share, "Export highlights & notes") { exportNotes(ctx, b); menuBook = null }
+                SheetAction(Icons.Rounded.Share, "Export highlights & notes") { com.clockedbit.hearth.AppLock.skipNextLock = true; exportNotes(ctx, b); menuBook = null }
                 SheetAction(Icons.Rounded.Delete, "Remove from library", danger = true) { deleteBook = b; menuBook = null }
             }
         }
@@ -552,7 +561,7 @@ private fun AppSettingsSheet(onDismiss: () -> Unit, snackbar: SnackbarHostState)
                     IconButton({ f.delete(); fonts = Store.customFonts() }) { Icon(Icons.Rounded.Delete, "Delete font") }
                 }
             }
-            TextButton({ fontPicker.launch(arrayOf("*/*")) }) {
+            TextButton({ com.clockedbit.hearth.AppLock.skipNextLock = true; fontPicker.launch(arrayOf("*/*")) }) {
                 Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(6.dp)); Text("Import a font")
             }
             SectionLabel("Pen")
@@ -568,9 +577,36 @@ private fun AppSettingsSheet(onDismiss: () -> Unit, snackbar: SnackbarHostState)
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp)
             )
+            SectionLabel("Privacy & security")
+            val secure = remember { com.clockedbit.hearth.AppLock.deviceIsSecure(ctx) }
+            PrivacySwitch("App lock",
+                if (secure) "Ask for your fingerprint, face or PIN every time Hearth opens"
+                else "Set a screen lock in your phone's settings first",
+                prefs.appLock, enabled = secure) { v -> Store.updatePrefs { it.copy(appLock = v) } }
+            PrivacySwitch("Privacy screen", "Block screenshots and hide Hearth's preview in recent apps",
+                prefs.privacyScreen) { v -> Store.updatePrefs { it.copy(privacyScreen = v) } }
+            Text(
+                "Hearth has no internet access, no ads, no tracking and no cloud backup. Your books, notes and settings never leave this device.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
             SectionLabel("About")
-            Text("Hearth — a cozy reader. Supports EPUB, PDF, TXT, FB2, DOCX, Markdown, HTML and CBZ.",
+            Text("Hearth — a cozy reader. Supports EPUB, PDF, TXT, FB2, DOCX, Markdown, HTML, and comics (CBZ or a ZIP of images).",
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+@Composable
+private fun PrivacySwitch(title: String, sub: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(enabled = enabled) { onChange(!checked) }.padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked && enabled, onChange, enabled = enabled)
     }
 }

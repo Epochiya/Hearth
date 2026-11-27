@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- No INTERNET permission: Hearth can never go online. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -10,6 +15,10 @@
         android:largeHeap="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.Hearth">
+
+        <!-- No usage metrics or Safe Browsing lookups from the page renderer -->
+        <meta-data android:name="android.webkit.WebView.MetricsOptOut" android:value="true" />
+        <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="false" />
 
         <activity
             android:name=".MainActivity"

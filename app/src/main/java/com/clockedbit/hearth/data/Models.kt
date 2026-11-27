@@ -37,13 +37,14 @@ data class Book(
     val readingMs: Long = 0L,
     val zoom: Float = 1f,
     val zoomLock: Boolean = false,
+    val pageSort: Int = 0,       // comics: 0 = name (smart A–Z), 1 = date modified
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("title", title); put("author", author); put("format", format.name)
         put("cover", cover ?: ""); put("addedAt", addedAt); put("lastOpened", lastOpened)
         put("progress", progress.toDouble()); put("position", position); put("pageCount", pageCount)
         put("favorite", favorite); put("finished", finished); put("readingMs", readingMs)
-        put("zoom", zoom.toDouble()); put("zoomLock", zoomLock)
+        put("zoom", zoom.toDouble()); put("zoomLock", zoomLock); put("pageSort", pageSort)
     }
 
     companion object {
@@ -63,6 +64,7 @@ data class Book(
             readingMs = o.optLong("readingMs"),
             zoom = o.optDouble("zoom", 1.0).toFloat(),
             zoomLock = o.optBoolean("zoomLock"),
+            pageSort = o.optInt("pageSort", 0),
         )
     }
 }
@@ -229,6 +231,8 @@ data class ReaderPrefs(
     val showClock: Boolean = true,
     val autoScrollSpeed: Float = 40f,
     val coverSize: Int = 148,
+    val appLock: Boolean = false,       // ask for fingerprint / PIN when opening Hearth
+    val privacyScreen: Boolean = false, // block screenshots and hide Hearth in recent apps
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("themeId", themeId); put("bg", bg); put("fg", fg); put("accent", accent)
@@ -244,6 +248,7 @@ data class ReaderPrefs(
         put("dailyGoalMin", dailyGoalMin); put("pageGap", pageGap); put("cropMargins", cropMargins)
         put("rtlPages", rtlPages); put("showStatus", showStatus); put("showClock", showClock)
         put("autoScrollSpeed", autoScrollSpeed.toDouble()); put("coverSize", coverSize)
+        put("appLock", appLock); put("privacyScreen", privacyScreen)
     }
 
     companion object {
@@ -287,6 +292,8 @@ data class ReaderPrefs(
                 showClock = o.optBoolean("showClock", d.showClock),
                 autoScrollSpeed = o.optDouble("autoScrollSpeed", d.autoScrollSpeed.toDouble()).toFloat(),
                 coverSize = o.optInt("coverSize", d.coverSize),
+                appLock = o.optBoolean("appLock", d.appLock),
+                privacyScreen = o.optBoolean("privacyScreen", d.privacyScreen),
             )
         }
     }
