@@ -726,7 +726,7 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
             var drag by remember { mutableStateOf<Float?>(null) }
             CompositionLocalProvider(LocalContentColor provides pageFg) {
                 Surface(color = pageBg.copy(alpha = 0.95f), contentColor = pageFg, shadowElevation = 6.dp) {
-                    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 18.dp, vertical = 8.dp)) {
+                    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = if (LocalConfiguration.current.screenWidthDp < 600) 8.dp else 18.dp, vertical = 8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val d = drag
                             val label = if (d != null) {
@@ -793,7 +793,7 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
         // ---------- pen toolbar ----------
         AnimatedVisibility(
             pen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 18.dp)
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 8.dp, end = 8.dp, bottom = 18.dp)
         ) {
             PenToolbar(
                 prefs = prefs, tool = penTool, onTool = { penTool = it },
@@ -969,14 +969,15 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
 }
 
 @Composable
-private fun BarButton(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
+private fun RowScope.BarButton(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
+    // Equal share of the bar, so six buttons fit on a phone as well as a tablet.
     Column(
-        Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 6.dp),
+        Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 2.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(icon, label, tint = tint)
         Spacer(Modifier.height(2.dp))
-        Text(label, fontSize = 11.sp, color = tint.copy(alpha = 0.8f))
+        Text(label, fontSize = 11.sp, color = tint.copy(alpha = 0.8f), maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
     }
 }
 

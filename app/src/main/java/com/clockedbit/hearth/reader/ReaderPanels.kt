@@ -312,7 +312,7 @@ fun PenToolbar(
             if (showWidth && tool != InkTool.ERASER) {
                 val isMarker = tool == InkTool.MARKER
                 val v = if (isMarker) prefs.markerWidth else prefs.penWidth
-                Row(Modifier.width(320.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.width(minOf(320, androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 56).dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Size", fontSize = 12.sp, color = on.copy(alpha = 0.7f))
                     Slider(
                         v, { nv -> Store.updatePrefs { if (isMarker) it.copy(markerWidth = nv) else it.copy(penWidth = nv) } },
@@ -597,7 +597,7 @@ fun ReadingSettingsSheet(prefs: ReaderPrefs, reflow: Boolean) {
         Label("Layout")
         Segmented(listOf("Pages", "Scroll"), if (prefs.scrollMode) 1 else 0, accent) { i -> Store.updatePrefs { it.copy(scrollMode = i == 1) } }
         Spacer(Modifier.height(6.dp))
-        if (reflow) SwitchRow("Two pages in landscape", "Book-style spread when the tablet is sideways", prefs.twoPage, accent) { v -> Store.updatePrefs { it.copy(twoPage = v) } }
+        if (reflow) SwitchRow("Two pages in landscape", "Book-style spread on wide screens (tablets held sideways)", prefs.twoPage, accent) { v -> Store.updatePrefs { it.copy(twoPage = v) } }
         SwitchRow("Page-turn animation", null, prefs.pageAnim, accent) { v -> Store.updatePrefs { it.copy(pageAnim = v) } }
         SwitchRow("Tap edges to turn pages", "Left / right side of the screen", prefs.tapZones, accent) { v -> Store.updatePrefs { it.copy(tapZones = v) } }
         SwitchRow("Volume keys turn pages", null, prefs.volumeKeys, accent) { v -> Store.updatePrefs { it.copy(volumeKeys = v) } }

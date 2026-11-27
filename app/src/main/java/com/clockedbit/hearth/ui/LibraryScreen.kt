@@ -161,21 +161,27 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
     }
     val continueBook = books.filter { it.lastOpened > 0 && !it.finished }.maxByOrNull { it.lastOpened }
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val compact = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
+    val side = if (compact) 16.dp else 22.dp
 
     Box(Modifier.fillMaxSize()) {
         CozyBackground()
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(prefs.coverSize.dp),
-            contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = top + 18.dp, bottom = 130.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            // On phones, cap the cover size so at least 3 books fit per row.
+            columns = GridCells.Adaptive(
+                if (compact) minOf(prefs.coverSize, (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 2 * 16 - 2 * 12) / 3).dp
+                else prefs.coverSize.dp
+            ),
+            contentPadding = PaddingValues(start = side, end = side, top = top + 18.dp, bottom = 130.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 20.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
             modifier = Modifier.fillMaxSize()
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Header(stats, prefs.dailyGoalMin, books.size, onSettings = { showSettings = true })
+                Header(stats, prefs.dailyGoalMin, books.size, compact, onSettings = { showSettings = true })
             }
             if (continueBook != null && query.isBlank() && filter == 0) {
-                item(span = { GridItemSpan(maxLineSpan) }) { ContinueCard(continueBook) { onOpen(continueBook.id) } }
+                item(span = { GridItemSpan(maxLineSpan) }) { ContinueCard(continueBook, compact) { onOpen(continueBook.id) } }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
@@ -236,7 +242,7 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
             text = { Text("Add books") },
             containerColor = Hearth.amber, contentColor = Color(0xFF2A1607),
             shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(24.dp)
+            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(if (compact) 16.dp else 24.dp)
         )
 
         AnimatedVisibility(
@@ -334,7 +340,7 @@ private fun SheetAction(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 }
 
 @Composable
-private fun Header(stats: Map<String, Long>, goalMin: Int, count: Int, onSettings: () -> Unit) {
+private fun Header(stats: Map<String, Long>, goalMin: Int, count: Int, compact: Boolean, onSettings: () -> Unit) {
     val today = Store.todayMs(stats) / 60_000
     val streak = Store.streak(stats)
     val goalFrac by animateFloatAsState((today.toFloat() / goalMin.coerceAtLeast(1)).coerceIn(0f, 1f), tween(900), label = "goal")
@@ -350,7 +356,19 @@ private fun Header(stats: Map<String, Long>, goalMin: Int, count: Int, onSetting
             }
         }
         Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (compact) {
+            // Phone: three slim chips, icon above the numbers so nothing wraps.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MiniStat(Modifier.weight(1f), "Today", "$today/${goalMin}m") {
+                    CircularProgressIndicator(
+                        progress = { goalFrac }, modifier = Modifier.size(24.dp), strokeWidth = 3.dp,
+                        color = Hearth.amber, trackColor = Color.White.copy(alpha = 0.08f), strokeCap = StrokeCap.Round
+                    )
+                }
+                MiniStat(Modifier.weight(1f), "Streak", "$streak day${if (streak == 1) "" else "s"}") { Text("🔥", fontSize = 18.sp) }
+                MiniStat(Modifier.weight(1f), "Books", "$count") { Text("📖", fontSize = 18.sp) }
+            }
+        } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatChip(Modifier.weight(1f)) {
                 Box(contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(
@@ -386,6 +404,20 @@ private fun Header(stats: Map<String, Long>, goalMin: Int, count: Int, onSetting
 }
 
 @Composable
+private fun MiniStat(modifier: Modifier, label: String, value: String, icon: @Composable () -> Unit) {
+    Column(
+        modifier.clip(RoundedCornerShape(16.dp)).background(Hearth.surface.copy(alpha = 0.65f))
+            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(Modifier.height(26.dp), contentAlignment = Alignment.Center) { icon() }
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text(value, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
 private fun StatChip(modifier: Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
         modifier.clip(RoundedCornerShape(18.dp)).background(Hearth.surface.copy(alpha = 0.65f))
@@ -396,24 +428,24 @@ private fun StatChip(modifier: Modifier, content: @Composable RowScope.() -> Uni
 }
 
 @Composable
-private fun ContinueCard(b: Book, onClick: () -> Unit) {
+private fun ContinueCard(b: Book, compact: Boolean, onClick: () -> Unit) {
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
             .background(Brush.linearGradient(listOf(Color(0xFF3A2416), Color(0xFF1F1714), Color(0xFF2A1E2E))))
             .border(1.dp, Hearth.amber.copy(alpha = 0.18f), RoundedCornerShape(26.dp))
             .clickable(onClick = onClick)
-            .padding(18.dp)
+            .padding(if (compact) 14.dp else 18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box {
                 Box(Modifier.matchParentSize().padding(6.dp).shadow(26.dp, RoundedCornerShape(10.dp), ambientColor = Hearth.ember, spotColor = Hearth.ember))
-                BookCover(b, Modifier.width(92.dp).height(136.dp).clip(RoundedCornerShape(10.dp)))
+                BookCover(b, Modifier.width(if (compact) 70.dp else 92.dp).height(if (compact) 104.dp else 136.dp).clip(RoundedCornerShape(10.dp)))
             }
-            Spacer(Modifier.width(20.dp))
+            Spacer(Modifier.width(if (compact) 14.dp else 20.dp))
             Column(Modifier.weight(1f)) {
                 Text("CONTINUE READING", style = MaterialTheme.typography.labelSmall, color = Hearth.amber)
                 Spacer(Modifier.height(6.dp))
-                Text(b.title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(b.title, style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (b.author.isNotEmpty()) Text(b.author, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 Spacer(Modifier.height(14.dp))
                 LinearProgressIndicator(

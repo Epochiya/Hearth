@@ -13,14 +13,17 @@
   function imp(el, k, v) { el.style.setProperty(k, v, 'important'); }
   function text() { if (chText === null) chText = document.body ? (document.body.textContent || '') : ''; return chText; }
 
+  // On narrow phone screens, cap the side margin so the text column stays wide enough.
+  function mg() { return Math.min(cfg.margin, Math.max(12, Math.round(window.innerWidth * 0.06))); }
+
   function layout() {
     W = window.innerWidth; VH = window.innerHeight;
-    var b = document.body, m = cfg.margin;
+    var b = document.body, m = mg();
     if (!b) return;
     imp(b, 'padding', cfg.top + 'px ' + m + 'px ' + cfg.bottom + 'px ' + m + 'px');
     if (cfg.paged) {
       document.documentElement.classList.add('hp');
-      var two = cfg.twoPage && W > VH && W >= 700;
+      var two = cfg.twoPage && W > VH && W >= 900 && VH >= 500; // tablets only, not phones held sideways
       var colW = two ? (W / 2 - 2 * m) : (W - 2 * m);
       imp(b, 'width', W + 'px');
       imp(b, 'height', VH + 'px');
@@ -68,13 +71,13 @@
   }
 
   function pageStart() {
-    var m = cfg.margin;
+    var m = mg();
     for (var y = cfg.top + 6; y < VH - cfg.bottom; y += 16)
       for (var x = m + 2; x < W - m; x += 36) { var o = caretAt(x, y); if (o >= 0) return o; }
     return -1;
   }
   function pageEnd() {
-    var m = cfg.margin;
+    var m = mg();
     for (var y = VH - cfg.bottom - 6; y > cfg.top; y -= 16)
       for (var x = W - m - 2; x > m; x -= 36) { var o = caretAt(x, y); if (o >= 0) return o; }
     return -1;
