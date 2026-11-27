@@ -590,12 +590,12 @@ fun ColorsSheet(prefs: ReaderPrefs, isPdf: Boolean) {
 /* ============================== reading settings ============================== */
 
 @Composable
-fun ReadingSettingsSheet(prefs: ReaderPrefs, reflow: Boolean) {
+fun ReadingSettingsSheet(prefs: ReaderPrefs, reflow: Boolean, comic: Boolean = false) {
     val accent = Color(prefs.accent)
     Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 28.dp).verticalScroll(rememberScrollState())) {
         Text("Reading", style = MaterialTheme.typography.titleLarge)
-        Label("Layout")
-        Segmented(listOf("Pages", "Scroll"), if (prefs.scrollMode) 1 else 0, accent) { i -> Store.updatePrefs { it.copy(scrollMode = i == 1) } }
+        if (!comic) Label("Layout")
+        if (!comic) Segmented(listOf("Pages", "Scroll"), if (prefs.scrollMode) 1 else 0, accent) { i -> Store.updatePrefs { it.copy(scrollMode = i == 1) } }
         Spacer(Modifier.height(6.dp))
         if (reflow) SwitchRow("Two pages in landscape", "Book-style spread on wide screens (tablets held sideways)", prefs.twoPage, accent) { v -> Store.updatePrefs { it.copy(twoPage = v) } }
         SwitchRow("Page-turn animation", null, prefs.pageAnim, accent) { v -> Store.updatePrefs { it.copy(pageAnim = v) } }

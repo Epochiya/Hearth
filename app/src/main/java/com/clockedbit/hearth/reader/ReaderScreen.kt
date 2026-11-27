@@ -132,6 +132,8 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
     val activity = remember(ctx) { ctx.findActivity() }
     val scope = rememberCoroutineScope()
     val prefs by Store.prefs.collectAsState()
+    // Comics always read as one long vertical scroll
+    val scrollMode = prefs.scrollMode || book0.format == BookFormat.CBZ
     val dir = remember { Store.bookDir(bookId) }
     val structure = remember { Store.structure(bookId) }
     val reflow = book0.format.reflow
@@ -186,7 +188,10 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
 
     // ---- where are we? ----
     val chapter = engine?.chapter ?: 0
-    val imgPage = if (prefs.scrollMode) listState.firstVisibleItemIndex else pagerState.currentPage
+    // Scrolled all the way down = on the last page (the top of the screen may still show an earlier one)
+    val atEnd = scrollMode && engine == null && pageCount > 0 &&
+        listState.layoutInfo.visibleItemsInfo.isNotEmpty() && !listState.canScrollForward
+    val imgPage = if (scrollMode) (if (atEnd) pageCount - 1 else listState.firstVisibleItemIndex) else pagerState.currentPage
     val startOff = engine?.start ?: -1
     val endOff = engine?.end ?: -1
     val progress = engine?.progress ?: if (pageCount <= 1) 1f else imgPage / (pageCount - 1f)
@@ -194,16 +199,16 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
         if (engine != null) c == chapter && off >= startOff && (off < endOff || off == startOff) else p == imgPage
 
     // keep the same page when switching between swipe and scroll
-    var modeSeen by remember { mutableStateOf(prefs.scrollMode) }
+    var modeSeen by remember { mutableStateOf(scrollMode) }
     var stablePage by remember { mutableIntStateOf(initialPage) }
-    SideEffect { if (modeSeen == prefs.scrollMode) stablePage = imgPage }
-    LaunchedEffect(prefs.scrollMode) {
-        if (modeSeen != prefs.scrollMode) {
+    SideEffect { if (modeSeen == scrollMode) stablePage = imgPage }
+    LaunchedEffect(scrollMode) {
+        if (modeSeen != scrollMode) {
             if (engine == null && pageCount > 0) {
                 val target = stablePage.coerceIn(0, pageCount - 1)
-                if (prefs.scrollMode) listState.scrollToItem(target) else pagerState.scrollToPage(target)
+                if (scrollMode) listState.scrollToItem(target) else pagerState.scrollToPage(target)
             }
-            modeSeen = prefs.scrollMode
+            modeSeen = scrollMode
         }
     }
 
@@ -227,19 +232,19 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
     // ---- navigation ----
     fun next() {
         if (engine != null) engine.next() else scope.launch {
-            if (prefs.scrollMode) listState.animateScrollToItem(min(imgPage + 1, max(0, pageCount - 1)))
+            if (scrollMode) listState.animateScrollToItem(min(imgPage + 1, max(0, pageCount - 1)))
             else pagerState.animateScrollToPage(min(pagerState.currentPage + 1, max(0, pageCount - 1)))
         }
     }
     fun prev() {
         if (engine != null) engine.prev() else scope.launch {
-            if (prefs.scrollMode) listState.animateScrollToItem(max(imgPage - 1, 0))
+            if (scrollMode) listState.animateScrollToItem(max(imgPage - 1, 0))
             else pagerState.animateScrollToPage(max(pagerState.currentPage - 1, 0))
         }
     }
     fun goPage(p: Int) {
         scope.launch {
-            if (prefs.scrollMode) listState.scrollToItem(p.coerceIn(0, max(0, pageCount - 1)))
+            if (scrollMode) listState.scrollToItem(p.coerceIn(0, max(0, pageCount - 1)))
             else pagerState.scrollToPage(p.coerceIn(0, max(0, pageCount - 1)))
         }
     }
@@ -318,7 +323,7 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
     }
 
     // apply style changes (debounced) to the open chapter
-    val styleKey = ReaderCss.build(prefs) + "|${prefs.scrollMode}|${prefs.margin}|${prefs.twoPage}|${prefs.tapZones}|${prefs.pageAnim}"
+    val styleKey = ReaderCss.build(prefs) + "|${scrollMode}|${prefs.margin}|${prefs.twoPage}|${prefs.tapZones}|${prefs.pageAnim}"
     var appliedKey by remember { mutableStateOf(styleKey) }
     SideEffect { if (engine != null && appliedKey == styleKey) engine.prefs = prefs }
     LaunchedEffect(styleKey) {
@@ -337,7 +342,7 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
         lastTurn = now
         lastActive = now
         if (engine != null && engine.loading) return@LaunchedEffect
-        if (modeSeen != prefs.scrollMode) return@LaunchedEffect
+        if (modeSeen != scrollMode) return@LaunchedEffect
         delay(500)
         val pos = engine?.position() ?: imgPage.toString()
         val pr = progress
@@ -355,8 +360,8 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
 
     // ---- auto-scroll ----
     val density = LocalDensity.current
-    LaunchedEffect(autoScroll, prefs.autoScrollSpeed, engine?.loading, engine?.chapter, prefs.scrollMode) {
-        if (autoScroll && !prefs.scrollMode) { Store.updatePrefs { it.copy(scrollMode = true) }; return@LaunchedEffect }
+    LaunchedEffect(autoScroll, prefs.autoScrollSpeed, engine?.loading, engine?.chapter, scrollMode) {
+        if (autoScroll && !scrollMode) { Store.updatePrefs { it.copy(scrollMode = true) }; return@LaunchedEffect }
         if (engine != null) {
             val px = prefs.autoScrollSpeed
             engine.eval("window.hearth && hearth.autoScroll(${if (autoScroll && !engine.loading) px else 0f})")
@@ -493,7 +498,7 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
             }
         } else if (source != null) {
             PagesView(
-                source = source, pagerState = pagerState, listState = listState, scrollMode = prefs.scrollMode,
+                source = source, pagerState = pagerState, listState = listState, scrollMode = scrollMode,
                 recolor = recolor, ink = ann.ink, pen = pen, penTool = penTool, penColor = penColor, penWidth = penWidth,
                 palmMode = prefs.palmMode,
                 onStroke = { t, col, w, pts, p -> addStroke(t, col, w, pts, p) },
@@ -745,11 +750,13 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
                             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically
                         ) {
-                            ZoomChip("Swipe", !prefs.scrollMode, accent, pageFg, icon = Icons.Rounded.SwapHoriz) {
-                                autoScroll = false; Store.updatePrefs { it.copy(scrollMode = false) }
+                            if (book0.format != BookFormat.CBZ) {
+                                ZoomChip("Swipe", !scrollMode, accent, pageFg, icon = Icons.Rounded.SwapHoriz) {
+                                    autoScroll = false; Store.updatePrefs { it.copy(scrollMode = false) }
+                                }
+                                ZoomChip("Scroll", scrollMode, accent, pageFg, icon = Icons.Rounded.SwapVert) { Store.updatePrefs { it.copy(scrollMode = true) } }
                             }
-                            ZoomChip("Scroll", prefs.scrollMode, accent, pageFg, icon = Icons.Rounded.SwapVert) { Store.updatePrefs { it.copy(scrollMode = true) } }
-                            if (engine == null && !prefs.scrollMode) {
+                            if (engine == null && !scrollMode) {
                                 Box(Modifier.width(1.dp).height(20.dp).background(pageFg.copy(alpha = 0.15f)))
                                 ZoomChip("Fit page", zoom <= 1.01f, accent, pageFg) { zoom = 1f; pan = Offset.Zero }
                                 ZoomChip("Fit width", zoom > 1.01f && kotlin.math.abs(zoom - fitWidth) < 0.02f, accent, pageFg) {
@@ -861,7 +868,7 @@ fun ReaderScreen(bookId: String, onClose: () -> Unit) {
                 when (s) {
                     ReaderSheet.TYPE -> TypographySheet(prefs)
                     ReaderSheet.COLORS -> ColorsSheet(prefs, isPdf = book0.format == BookFormat.PDF)
-                    ReaderSheet.SETTINGS -> ReadingSettingsSheet(prefs, reflow = engine != null)
+                    ReaderSheet.SETTINGS -> ReadingSettingsSheet(prefs, reflow = engine != null, comic = book0.format == BookFormat.CBZ)
                 }
             }
         }
