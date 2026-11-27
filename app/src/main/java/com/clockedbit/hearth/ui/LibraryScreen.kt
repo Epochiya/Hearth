@@ -23,6 +23,10 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -118,6 +122,15 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
     var deleteBook by remember { mutableStateOf<Book?>(null) }
     var importing by remember { mutableIntStateOf(0) }
     var showSettings by remember { mutableStateOf(false) }
+    val collections by Store.collections.collectAsState()
+    var coll by rememberSaveable { mutableStateOf("") }            // "" = all books
+    var collMenu by remember { mutableStateOf<String?>(null) }      // long-pressed collection
+    var newCollFor by remember { mutableStateOf<List<String>?>(null) } // book ids to put in the new collection
+    var renameColl by remember { mutableStateOf<String?>(null) }
+    var deleteColl by remember { mutableStateOf<String?>(null) }
+    var pickFor by remember { mutableStateOf<Book?>(null) }         // "Add / move to collection" for one book
+    var addToColl by remember { mutableStateOf(false) }             // pick existing books for the open collection
+    LaunchedEffect(collections) { if (coll.isNotEmpty() && coll !in collections) coll = "" }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
@@ -125,8 +138,9 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
             importing = uris.size
             var ok = 0
             var last: Book? = null
+            val into = coll
             for (u in uris) {
-                try { last = Importer.import(ctx, u); ok++ } catch (e: Exception) {
+                try { val nb = Importer.import(ctx, u); last = nb; ok++; if (into.isNotEmpty()) Store.setCollection(listOf(nb.id), into) } catch (e: Exception) {
                     snackbar.showSnackbar(e.message ?: "Import failed")
                 }
                 importing--
@@ -142,8 +156,9 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
     }
     val addBooks = { com.clockedbit.hearth.AppLock.skipNextLock = true; launcher.launch(arrayOf("*/*")) }
 
-    val shown = remember(books, query, filter, sort) {
+    val shown = remember(books, query, filter, sort, coll) {
         var l = books.asSequence()
+        if (coll.isNotEmpty()) l = l.filter { it.collection == coll }
         if (query.isNotBlank()) l = l.filter { it.title.contains(query, true) || it.author.contains(query, true) }
         l = when (filter) {
             1 -> l.filter { it.lastOpened > 0 && !it.finished }
@@ -181,11 +196,30 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Header(stats, prefs.dailyGoalMin, books.size, compact, onSettings = { showSettings = true })
             }
-            if (continueBook != null && query.isBlank() && filter == 0) {
+            if (continueBook != null && query.isBlank() && filter == 0 && coll.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) { ContinueCard(continueBook, compact) { onOpen(continueBook.id) } }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
+                    // ---- collections ----
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CollectionChip("All books", books.size, coll.isEmpty(), Icons.Rounded.AutoStories, onClick = { coll = "" })
+                        collections.forEach { c ->
+                            CollectionChip(c, books.count { it.collection == c }, coll == c, Icons.Rounded.Folder,
+                                onClick = { coll = c }, onLongClick = { collMenu = c })
+                        }
+                        CollectionChip("New", null, false, Icons.Rounded.CreateNewFolder, onClick = { newCollFor = emptyList() })
+                    }
+                    if (coll.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(coll, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            TextButton({ addToColl = true }) { Icon(Icons.Rounded.LibraryAdd, null); Spacer(Modifier.width(6.dp)); Text("Add books") }
+                            IconButton({ collMenu = coll }) { Icon(Icons.Rounded.MoreVert, "Collection options") }
+                        }
+                    }
                     OutlinedTextField(
                         query, { query = it }, singleLine = true,
                         placeholder = { Text("Search your shelf") },
@@ -229,7 +263,11 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
                 item(span = { GridItemSpan(maxLineSpan) }) { EmptyLibrary(addBooks) }
             } else if (shown.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text("Nothing here yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp))
+                    Text(
+                        if (coll.isNotEmpty() && query.isBlank() && filter == 0) "This collection is empty. Tap “Add books” to put books from your library in it, or import new ones while it's open."
+                        else "Nothing here yet.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp)
+                    )
                 }
             }
             items(shown, key = { it.id }) { b ->
@@ -287,6 +325,10 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
                     Store.updateBook(b.id) { if (it.finished) it.copy(finished = false) else it.copy(finished = true, progress = 1f) }
                     menuBook = null
                 }
+                SheetAction(Icons.Rounded.Folder,
+                    if (b.collection.isEmpty()) "Add to collection" else "Move to another collection (in “${b.collection}”)") {
+                    pickFor = b; menuBook = null
+                }
                 if (b.format == BookFormat.CBZ) {
                     SheetAction(Icons.AutoMirrored.Rounded.Sort,
                         if (b.pageSort == 1) "Page order: Date modified (tap for A–Z)" else "Page order: A–Z (tap for Date modified)") {
@@ -300,6 +342,137 @@ fun LibraryScreen(onOpen: (String) -> Unit, snackbar: SnackbarHostState) {
                 SheetAction(Icons.Rounded.Delete, "Remove from library", danger = true) { deleteBook = b; menuBook = null }
             }
         }
+    }
+
+    // ---- collection dialogs ----
+    pickFor?.let { b ->
+        AlertDialog(
+            onDismissRequest = { pickFor = null },
+            title = { Text(if (b.collection.isEmpty()) "Add to collection" else "Move to collection") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (collections.isEmpty()) Text("No collections yet. Make one below.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    collections.forEach { c ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                .clickable { Store.setCollection(listOf(b.id), c); pickFor = null }.padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(b.collection == c, null)
+                            Spacer(Modifier.width(10.dp))
+                            Text(c, Modifier.weight(1f))
+                            Text("${books.count { it.collection == c }}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    TextButton({ newCollFor = listOf(b.id); pickFor = null }) {
+                        Icon(Icons.Rounded.CreateNewFolder, null); Spacer(Modifier.width(6.dp)); Text("New collection…")
+                    }
+                    if (b.collection.isNotEmpty()) TextButton({ Store.setCollection(listOf(b.id), ""); pickFor = null }) {
+                        Icon(Icons.Rounded.FolderOff, null); Spacer(Modifier.width(6.dp)); Text("Take out of “${b.collection}”")
+                    }
+                }
+            },
+            confirmButton = { TextButton({ pickFor = null }) { Text("Close") } }
+        )
+    }
+
+    newCollFor?.let { ids ->
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { newCollFor = null },
+            title = { Text("New collection") },
+            text = { OutlinedTextField(name, { name = it }, singleLine = true, placeholder = { Text("e.g. Manga, Classics, To read") }) },
+            confirmButton = {
+                TextButton({
+                    Store.createCollection(name)?.let { c ->
+                        if (ids.isNotEmpty()) Store.setCollection(ids, c)
+                        coll = c
+                    }
+                    newCollFor = null
+                }, enabled = name.isNotBlank()) { Text("Create") }
+            },
+            dismissButton = { TextButton({ newCollFor = null }) { Text("Cancel") } }
+        )
+    }
+
+    collMenu?.let { c ->
+        ModalBottomSheet(onDismissRequest = { collMenu = null }, containerColor = Hearth.surface) {
+            Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 28.dp)) {
+                Text(c, style = MaterialTheme.typography.titleLarge)
+                Text("${books.count { it.collection == c }} books", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                SheetAction(Icons.Rounded.LibraryAdd, "Add books") { coll = c; addToColl = true; collMenu = null }
+                SheetAction(Icons.Rounded.Edit, "Rename") { renameColl = c; collMenu = null }
+                SheetAction(Icons.Rounded.Delete, "Delete collection", danger = true) { deleteColl = c; collMenu = null }
+            }
+        }
+    }
+
+    renameColl?.let { c ->
+        var name by remember(c) { mutableStateOf(c) }
+        AlertDialog(
+            onDismissRequest = { renameColl = null },
+            title = { Text("Rename collection") },
+            text = { OutlinedTextField(name, { name = it }, singleLine = true) },
+            confirmButton = {
+                TextButton({
+                    Store.renameCollection(c, name)
+                    if (coll == c) coll = Store.collections.value.firstOrNull { it.equals(name.trim(), true) } ?: ""
+                    renameColl = null
+                }, enabled = name.isNotBlank()) { Text("Save") }
+            },
+            dismissButton = { TextButton({ renameColl = null }) { Text("Cancel") } }
+        )
+    }
+
+    deleteColl?.let { c ->
+        AlertDialog(
+            onDismissRequest = { deleteColl = null },
+            title = { Text("Delete “$c”?") },
+            text = { Text("Only the collection is deleted. Its books stay in your library.") },
+            confirmButton = {
+                TextButton({ Store.deleteCollection(c); if (coll == c) coll = ""; deleteColl = null }) { Text("Delete", color = Color(0xFFFF7B7B)) }
+            },
+            dismissButton = { TextButton({ deleteColl = null }) { Text("Cancel") } }
+        )
+    }
+
+    if (addToColl && coll.isNotEmpty()) {
+        val picked = remember { mutableStateListOf<String>() }
+        val others = books.filter { it.collection != coll }.sortedBy { it.title.lowercase() }
+        AlertDialog(
+            onDismissRequest = { addToColl = false },
+            title = { Text("Add to “$coll”") },
+            text = {
+                if (others.isEmpty()) Text("Every book in your library is already in this collection.")
+                else LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(others, key = { it.id }) { b ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                .clickable { if (b.id in picked) picked.remove(b.id) else picked.add(b.id) }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(b.id in picked, null)
+                            Spacer(Modifier.width(8.dp))
+                            BookCover(b, Modifier.width(30.dp).height(44.dp).clip(RoundedCornerShape(4.dp)))
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(b.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (b.collection.isNotEmpty()) Text("moves from “${b.collection}”",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton({ Store.setCollection(picked.toList(), coll); addToColl = false }, enabled = picked.isNotEmpty()) {
+                    Text(if (picked.isEmpty()) "Add" else "Add ${picked.size}")
+                }
+            },
+            dismissButton = { TextButton({ addToColl = false }) { Text("Cancel") } }
+        )
     }
 
     editBook?.let { b ->
@@ -608,5 +781,30 @@ private fun PrivacySwitch(title: String, sub: String, checked: Boolean, enabled:
             Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked && enabled, onChange, enabled = enabled)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CollectionChip(
+    label: String, count: Int?, selected: Boolean, icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit, onLongClick: (() -> Unit)? = null,
+) {
+    val bg = if (selected) Hearth.amber.copy(alpha = 0.22f) else Hearth.surface.copy(alpha = 0.65f)
+    val fg = if (selected) Hearth.amber else MaterialTheme.colorScheme.onSurface
+    Row(
+        Modifier.clip(RoundedCornerShape(50)).background(bg)
+            .border(1.dp, if (selected) Hearth.amber.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.06f), RoundedCornerShape(50))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = fg, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        if (count != null) {
+            Spacer(Modifier.width(6.dp))
+            Text("$count", color = fg.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium)
+        }
     }
 }

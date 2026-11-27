@@ -6,6 +6,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -21,6 +22,8 @@ object Store {
 
     val books = MutableStateFlow<List<Book>>(emptyList())
     val prefs = MutableStateFlow(ReaderPrefs())
+    /** Collection names, in the order the user created them. */
+    val collections = MutableStateFlow<List<String>>(emptyList())
     /** "yyyy-MM-dd" -> milliseconds read that day */
     val stats = MutableStateFlow<Map<String, Long>>(emptyMap())
 
@@ -35,6 +38,11 @@ object Store {
         root = context.applicationContext.filesDir
         booksDir.mkdirs(); fontsDir.mkdirs()
         loadBooks()
+        val saved = runCatching {
+            val a = JSONArray(File(root, "collections.json").readText())
+            (0 until a.length()).map { a.getString(it) }
+        }.getOrDefault(emptyList())
+        collections.value = (saved + books.value.map { it.collection }.filter { it.isNotEmpty() }).distinct()
         runCatching { prefs.value = ReaderPrefs.fromJson(JSONObject(File(root, "prefs.json").readText())) }
         runCatching {
             val o = JSONObject(File(root, "stats.json").readText())
@@ -45,6 +53,41 @@ object Store {
     }
 
     fun bookDir(id: String) = File(booksDir, id)
+
+    /* ---------------- collections ---------------- */
+
+    private fun saveCollections(l: List<String>) {
+        collections.value = l
+        val json = JSONArray(l).toString()
+        writer.launch { writeAtomic(File(root, "collections.json"), json) }
+    }
+
+    /** Returns the name actually used (trimmed), or null if empty. */
+    fun createCollection(name: String): String? {
+        val n = name.trim().take(60)
+        if (n.isEmpty()) return null
+        if (collections.value.none { it.equals(n, true) }) saveCollections(collections.value + n)
+        return collections.value.first { it.equals(n, true) }
+    }
+
+    fun renameCollection(old: String, new: String) {
+        val n = new.trim().take(60)
+        if (n.isEmpty() || n == old) return
+        val merged = collections.value.firstOrNull { it.equals(n, true) && it != old }
+        val target = merged ?: n
+        saveCollections(collections.value.mapNotNull { if (it == old) (if (merged != null) null else target) else it })
+        books.value.filter { it.collection == old }.forEach { b -> updateBook(b.id) { it.copy(collection = target) } }
+    }
+
+    /** Deletes the collection only; its books stay in the library. */
+    fun deleteCollection(name: String) {
+        saveCollections(collections.value - name)
+        books.value.filter { it.collection == name }.forEach { b -> updateBook(b.id) { it.copy(collection = "") } }
+    }
+
+    fun setCollection(bookIds: Collection<String>, name: String) {
+        bookIds.forEach { id -> updateBook(id) { it.copy(collection = name) } }
+    }
 
     private fun writeAtomic(f: File, text: String) {
         f.parentFile?.mkdirs()

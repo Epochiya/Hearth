@@ -38,13 +38,14 @@ data class Book(
     val zoom: Float = 1f,
     val zoomLock: Boolean = false,
     val pageSort: Int = 0,       // comics: 0 = name (smart A–Z), 1 = date modified
+    val collection: String = "", // the collection this book is in ("" = none)
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("title", title); put("author", author); put("format", format.name)
         put("cover", cover ?: ""); put("addedAt", addedAt); put("lastOpened", lastOpened)
         put("progress", progress.toDouble()); put("position", position); put("pageCount", pageCount)
         put("favorite", favorite); put("finished", finished); put("readingMs", readingMs)
-        put("zoom", zoom.toDouble()); put("zoomLock", zoomLock); put("pageSort", pageSort)
+        put("zoom", zoom.toDouble()); put("zoomLock", zoomLock); put("pageSort", pageSort); put("collection", collection)
     }
 
     companion object {
@@ -65,6 +66,7 @@ data class Book(
             zoom = o.optDouble("zoom", 1.0).toFloat(),
             zoomLock = o.optBoolean("zoomLock"),
             pageSort = o.optInt("pageSort", 0),
+            collection = o.optString("collection", ""),
         )
     }
 }
